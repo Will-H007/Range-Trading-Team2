@@ -1,7 +1,8 @@
 import pandas as pd
 import time
 import multiprocessing as mp
-
+import matplotlib.pyplot as plt
+import numpy as np
 # local imports
 from backtester import engine, tester
 from backtester import API_Interface as api
@@ -9,12 +10,15 @@ from backtester import API_Interface as api
 training_period = 20 # How far the rolling average takes into calculation
 standard_deviations = 3.5 # Number of Standard Deviations from the mean the Bollinger Bands sit
 
+
+
+
 '''
 logic() function:
     Context: Called for every row in the input data.
 
     Input:  account - the account object
-            lookback - the lookback dataframe, containing all data up until this point in time
+            df - the df dataframe, containing all data up until this point in time
 
     Output: none, but the account object will be modified on each call
 '''
@@ -22,12 +26,48 @@ logic() function:
 def logic(account, lookback): # Logic function to be used for each time interval in backtest 
     
     today = len(lookback)-1
+    column_names = list(lookback.columns) # ['date', 'open', 'high', 'low', 'close', 'volume']
+
+    # The open is the starting period of trading on a securities exchange or organized over-the-counter market.
+    # The close is simply the end of a trading session in the financial markets, however, closing times tend to vary between market and exchange.
+
+    # The high is the highest price at which a stock is traded during a period. 
+    # The low is the lowest price of the period. 
+    # A stock’s high and low points for the day are often called its intraday high and low.
+
+    # Volume is simply the number of shares traded in a particular stock, index, or other investment over a specific period of time.
+    
+    period = 64 
+    # Approx a day
 
     '''
     
     Develop Logic Here
     
     '''
+    #Check every day (64)
+    if today % period == 0:
+
+        fig, ax = plt.subplots()
+
+        # Plot the average true range
+        lookback["atr"].plot(ax=ax)
+        lookback['close'].plot(ax=ax, secondary_y=True, alpha=0.3)
+        
+        # Plot the Bollinger Bands
+        ax = lookback[['close', 'BOLU', 'BOLD']].plot(color=['blue', 'orange', 'yellow'])
+        ax.fill_between(lookback.index, lookback['BOLD'], lookback['BOLU'], facecolor='orange', alpha=0.1)
+    
+
+        plt.show()
+
+
+
+
+
+
+
+
 
 '''
 preprocess_data() function:
@@ -49,14 +89,35 @@ def preprocess_data(list_of_stocks):
         
         '''
 
+        # Bollinger Bands
+        df['TP'] = (df['close'] + df['low'] + df['high'])/3
+        df['std'] = standard_deviations
+        df['MA-TP'] = df['TP'].rolling(training_period).mean()
+        df['BOLU'] = df['MA-TP'] + 2*df['std']
+        df['BOLD'] = df['MA-TP'] - 2*df['std']
+        print(df.describe().transpose())
+
+        #Average True Range
+        days = 14 #The time period employed
+        high_low = df['high'] - df['low']
+        high_close = np.abs(df['high'] - df['close'].shift())
+        low_close = np.abs(df['low'] - df['close'].shift())
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = np.max(ranges, axis=1)
+        df["atr"] = true_range.rolling(days).sum()/14
 
         df.to_csv("data/" + stock + "_Processed.csv", index=False) # Save to CSV
         list_of_stocks_processed.append(stock + "_Processed")
     return list_of_stocks_processed
 
+
+
+
+
+
 if __name__ == "__main__":
     # list_of_stocks = ["TSLA_2020-03-01_2022-01-20_1min"] 
-    list_of_stocks = ["TSLA_2020-03-09_2022-01-28_15min", "AAPL_2020-03-24_2022-02-12_15min"] # List of stock data csv's to be tested, located in "data/" folder 
+    list_of_stocks = ["TSLA_2020-03-09_2022-01-28_15min"] # List of stock data csv's to be tested, located in "data/" folder  # "AAPL_2020-03-24_2022-02-12_15min"
     list_of_stocks_proccessed = preprocess_data(list_of_stocks) # Preprocess the data
     results = tester.test_array(list_of_stocks_proccessed, logic, chart=True) # Run backtest on list of stocks using the logic function
 
