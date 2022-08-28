@@ -3,59 +3,65 @@ import time
 import multiprocessing as mp
 from backtester import engine, tester
 from backtester import API_Interface as api
+from math import log2
 
-training_period = 20  # How far the rolling average takes into calculation
+training_period = 200  # How far the rolling average takes into calculation
 standard_deviations = 3.5  # Number of Standard Deviations from the mean the Bollinger Bands sit
 
 
-def logic(account, lookback):  # Logic function to be used for each time interval in backtest
+def logic(account, historical_data):  # Logic function to be used for each time interval in backtest
     """
     Context: Called for every row in the input data.
     Input:  account - the account object
-            lookback - the lookback dataframe, containing all data up until this point in time
+            historical_data (dataframe): contains data points up to the current time
     Output: none, but the account object will be modified on each call
     """
-    today = len(lookback)-1
-    # If the lookback is long enough to calculate the Bollinger Bands
+    today = len(historical_data)-1
+
+    # decide on positions after training period
     if today > training_period:
-        # If current price is below lower Bollinger Band, enter a long position
-        if lookback['close'][today] < lookback['BOLD'][today]:
-            # Close all current positions
+        resistance = historical_data['local_max'][today-1]  # -1 to not include today
+        support = historical_data['local_min'][today-1]
+        exit_price = log2(historical_data['close'][today]) - log2(historical_data['close'][today-1])
+        # enter a long position if price penetrates resistance
+        if historical_data['close'][today] > resistance:
+            # close short positions
             for position in account.positions:
-                account.close_position(position, 1, lookback['close'][today])
+                if position.type_ == 'short':
+                    account.close_position(position, 1, historical_data['close'][today])
+            # open a long position
             if account.buying_power > 0:
-                account.enter_position('long', account.buying_power, lookback['close'][today]) # Enter a long position
-        # If today's price is above the upper Bollinger Band, enter a short position
-        if lookback['close'][today] > lookback['BOLU'][today]:
-            for position in account.positions: # Close all current positions
-                account.close_position(position, 1, lookback['close'][today])
-            if account.buying_power > 0 :
-                account.enter_position('short', account.buying_power, lookback['close'][today]) # Enter a short position
+                account.enter_position('long', account.buying_power, historical_data['close'][today])
+        # enter a short position if price penetrates support
+        elif historical_data['close'][today] < support:
+            # close long positions
+            for position in account.positions:
+                if position.type_ == 'long':
+                    account.close_position(position, 1, historical_data['close'][today])
+            # open a short position
+            if account.buying_power > 0:
+                account.enter_position('short', account.buying_power, historical_data['close'][today])
 
 
 def preprocess_data(list_of_stocks):
     """
-    Context: Called once at the beginning of the backtest. TOTALLY OPTIONAL.
-             Each of these can be calculated at each time interval, however this is likely slower.
-    Input:  list_of_stocks - a list of stock data csvs to be processed
+    Context: preprocess data form alphavantage
+    Input:  list_of_stocks (list), a list of stock data csvs to be processed
     Output: list_of_stocks_processed - a list of processed stock data csvs
     """
     list_of_stocks_processed = []
     for stock in list_of_stocks:
-        df = pd.read_csv("data/" + stock + ".csv", parse_dates=[0])
-        df['TP'] = (df['close'] + df['low'] + df['high'])/3  # Calculate Typical Price
-        df['std'] = df['TP'].rolling(training_period).std()  # Calculate Standard Deviation
-        df['MA-TP'] = df['TP'].rolling(training_period).mean()  # Calculate Moving Average of Typical Price
-        df['BOLU'] = df['MA-TP'] + standard_deviations*df['std']  # Calculate Upper Bollinger Band
-        df['BOLD'] = df['MA-TP'] - standard_deviations*df['std']  # Calculate Lower Bollinger Band
-        df.to_csv("data/" + stock + "_Processed.csv", index=False)  # Save to CSV
+        data = pd.read_csv("data/" + stock + ".csv", parse_dates=[0])  # read raw .csv from data directory
+        data['local_max'] = data['close'].rolling(training_period).max()  # calculate the local maximum
+        data['local_min'] = data['close'].rolling(training_period).max()  # calculate the local minimum
+        data.to_csv("data/" + stock + "_Processed.csv", index=False)  # write process .csv to data directory
         list_of_stocks_processed.append(stock + "_Processed")
     return list_of_stocks_processed
 
 
 if __name__ == "__main__":
     # List of stock data csv's to be tested, located in "data/" folder
-    list_of_stocks = ["TSLA_2020-03-09_2022-01-28_15min", "AAPL_2020-03-24_2022-02-12_15min"]
+    list_of_stocks = ["TSLA_2020-03-09_2022-01-28_15min"]
     # Preprocess the data
     list_of_stocks_proccessed = preprocess_data(list_of_stocks)
     # Run backtest on list of stocks using the logic function
