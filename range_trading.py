@@ -46,26 +46,22 @@ def logic(account, lookback): # Logic function to be used for each time interval
     
     '''
     #Check every day (64)
-    if today % period == 0:
+    # if today % period == 0:
 
-        fig, ax = plt.subplots()
+    #     fig, ax = plt.subplots()
 
-        # Plot the average true range
-        lookback["atr"].plot(ax=ax)
-        lookback['close'].plot(ax=ax, secondary_y=True, alpha=0.3)
+    #     # Plot the average true range
+    #     lookback["atr"].plot(ax=ax)
+    #     lookback['close'].plot(ax=ax, secondary_y=True, alpha=0.3)
         
-        # Plot the Bollinger Bands
-        ax = lookback[['close', 'BOLU', 'BOLD']].plot(color=['blue', 'orange', 'yellow'])
-        ax.fill_between(lookback.index, lookback['BOLD'], lookback['BOLU'], facecolor='orange', alpha=0.1)
+    #     # Plot the Bollinger Bands
+    #     ax = lookback[['close', 'BOLU', 'BOLD']].plot(color=['blue', 'orange', 'yellow'])
+    #     ax.fill_between(lookback.index, lookback['BOLD'], lookback['BOLU'], facecolor='orange', alpha=0.1)
     
 
-        plt.show()
-
-
-
-
-
-
+    #     plt.show()
+        # if(account.buying_power > 0):
+        #     account.enter_position('short', account.buying_power, lookback['close'][today])
 
 
 
