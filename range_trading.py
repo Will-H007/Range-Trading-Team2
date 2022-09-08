@@ -25,10 +25,10 @@ logic() function:
 
 def risk_management(account):
     # safety_percentage = 1
-    if account.buying_power > 10000:
-        safety_percentage = 0.5
-    elif account.buying_power > 5000 and account.buying_power <= 10000:
-        safety_percentage = 1
+    if account.buying_power > 7500:
+        safety_percentage = 0.4
+    elif account.buying_power > 5000 and account.buying_power <= 7500:
+        safety_percentage = 0.3
     elif 3500 < account.buying_power and account.buying_power <= 5000:
         safety_percentage = 0.2
     else:
@@ -50,7 +50,7 @@ def logic(account, lookback): # Logic function to be used for each time interval
 
     # Volume is simply the number of shares traded in a particular stock, index, or other investment over a specific period of time.
     
-    period = 64 
+    period = 64
     # Approx a day
 
     '''
@@ -73,7 +73,7 @@ def logic(account, lookback): # Logic function to be used for each time interval
             if(account.buying_power > 0):
                 account.enter_position('long',account.buying_power * safety_percentage, lookback['close'][today]) # Enter a long position
 
-        elif(lookback['close'][today] > lookback['BOLU'][today]) and lookback['percent_b'][today-64:today].mean() < 0.3: # If today's price is above the upper Bollinger Band, enter a short position
+        if(lookback['close'][today] > lookback['BOLU'][today]) and lookback['percent_b'][today-64:today].mean() < 0.3: # If today's price is above the upper Bollinger Band, enter a short position
             for position in account.positions: # Close all current positions
                 account.close_position(position, 1, lookback['close'][today])
             if(account.buying_power > 0):
@@ -82,13 +82,13 @@ def logic(account, lookback): # Logic function to be used for each time interval
 
         #Trending market
 
-        if lookback['Trend'][today-20:today].sum() > 0 and lookback['MA-TP'][today-20:today].mean() <  lookback['close'][today-20:today].mean() and lookback['close'][today] > lookback['BOLU'][today]:
+        if lookback['Trend'][today-20:today].sum() > 0 and lookback['MA-TP'][today-20:today].mean() <  lookback['close'][today-20:today].mean() and lookback['close'][today] >= lookback['BOLU'][today]:
             for position in account.positions: # Close all current positions
                 account.close_position(position, 1, lookback['close'][today])
             if(account.buying_power > 0):
                 account.enter_position('long',account.buying_power * safety_percentage, lookback['close'][today]) # Enter a long position
 
-        elif lookback['Trend'][today-20:today].sum() < 0 and lookback['MA-TP'][today-20:today].mean() >  lookback['close'][today-20:today].mean() and lookback['close'][today] < lookback['BOLD'][today]:
+        if lookback['Trend'][today-20:today].sum() < 0 and lookback['MA-TP'][today-20:today].mean() >  lookback['close'][today-20:today].mean() and lookback['close'][today] <= lookback['BOLD'][today]:
             for position in account.positions: # Close all current positions
                 account.close_position(position, 1, lookback['close'][today])
             if(account.buying_power > 0):
