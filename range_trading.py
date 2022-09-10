@@ -25,12 +25,12 @@ logic() function:
 
 def risk_management(account):
     # safety_percentage = 1
-    if account.buying_power > 7500:
+    if account.buying_power > 6500:
+        safety_percentage = 0.5
+    elif account.buying_power > 5000 and account.buying_power <= 6500:
         safety_percentage = 0.4
-    elif account.buying_power > 5000 and account.buying_power <= 7500:
-        safety_percentage = 0.3
     elif 3500 < account.buying_power and account.buying_power <= 5000:
-        safety_percentage = 0.2
+        safety_percentage = 0.3
     else:
         safety_percentage = 0
     return safety_percentage
@@ -65,34 +65,36 @@ def logic(account, lookback): # Logic function to be used for each time interval
         safety_percentage = risk_management(account)
 
         #Range market
+        if lookback['percent_b'][today-64:today].mean() < 0.3:
         
-        if(lookback['close'][today] < lookback['BOLD'][today]) and lookback['percent_b'][today-64:today].mean() < 0.3: # If current price is below lower Bollinger Band, enter a long position
-            
-            for position in account.positions: # Close all current positions
-                account.close_position(position, 1, lookback['close'][today])
-            if(account.buying_power > 0):
-                account.enter_position('long',account.buying_power * safety_percentage, lookback['close'][today]) # Enter a long position
+            if(lookback['close'][today] < lookback['BOLD'][today]): # If current price is below lower Bollinger Band, enter a long position
+                
+                for position in account.positions: # Close all current positions
+                    account.close_position(position, 1, lookback['close'][today])
+                if(account.buying_power > 0):
+                    account.enter_position('long',account.buying_power * safety_percentage, lookback['close'][today]) # Enter a long position
 
-        if(lookback['close'][today] > lookback['BOLU'][today]) and lookback['percent_b'][today-64:today].mean() < 0.3: # If today's price is above the upper Bollinger Band, enter a short position
-            for position in account.positions: # Close all current positions
-                account.close_position(position, 1, lookback['close'][today])
-            if(account.buying_power > 0):
-                account.enter_position('short', account.buying_power * safety_percentage, lookback['close'][today]) # Enter a short position
+            if(lookback['close'][today] > lookback['BOLU'][today]): # If today's price is above the upper Bollinger Band, enter a short position
+                for position in account.positions: # Close all current positions
+                    account.close_position(position, 1, lookback['close'][today])
+                if(account.buying_power > 0):
+                    account.enter_position('short', account.buying_power * safety_percentage, lookback['close'][today]) # Enter a short position
 
 
         #Trending market
+        else:
 
-        if lookback['Trend'][today-20:today].sum() > 0 and lookback['MA-TP'][today-20:today].mean() <  lookback['close'][today-20:today].mean() and lookback['close'][today] >= lookback['BOLU'][today]:
-            for position in account.positions: # Close all current positions
-                account.close_position(position, 1, lookback['close'][today])
-            if(account.buying_power > 0):
-                account.enter_position('long',account.buying_power * safety_percentage, lookback['close'][today]) # Enter a long position
+            if lookback['Trend'][today-20:today].sum() > 0 and lookback['MA-TP'][today-20:today].mean() <  lookback['close'][today-20:today].mean() and lookback['close'][today] >= lookback['BOLU'][today]:
+                for position in account.positions: # Close all current positions
+                    account.close_position(position, 1, lookback['close'][today])
+                if(account.buying_power > 0):
+                    account.enter_position('long',account.buying_power * safety_percentage, lookback['close'][today]) # Enter a long position
 
-        if lookback['Trend'][today-20:today].sum() < 0 and lookback['MA-TP'][today-20:today].mean() >  lookback['close'][today-20:today].mean() and lookback['close'][today] <= lookback['BOLD'][today]:
-            for position in account.positions: # Close all current positions
-                account.close_position(position, 1, lookback['close'][today])
-            if(account.buying_power > 0):
-                account.enter_position('short', account.buying_power * safety_percentage, lookback['close'][today]) # Enter a short position
+            if lookback['Trend'][today-20:today].sum() < 0 and lookback['MA-TP'][today-20:today].mean() >  lookback['close'][today-20:today].mean() and lookback['close'][today] <= lookback['BOLD'][today]:
+                for position in account.positions: # Close all current positions
+                    account.close_position(position, 1, lookback['close'][today])
+                if(account.buying_power > 0):
+                    account.enter_position('short', account.buying_power * safety_percentage, lookback['close'][today]) # Enter a short position
 
 
 
@@ -136,16 +138,16 @@ def preprocess_data(list_of_stocks):
         df['BOLD'] = df['MA-TP'] - 2*df['std']
         df['Trend'] = df['MA-TP'].pct_change()
         df["percent_b"] = (df['close'] - df['BOLU']) / (df['BOLD'] - df['BOLU'])
-        print(df.describe().transpose())
+        # print(df.describe().transpose())
 
         #Average True Range
-        days = 14 #The time period employed
-        high_low = df['high'] - df['low']
-        high_close = np.abs(df['high'] - df['close'].shift())
-        low_close = np.abs(df['low'] - df['close'].shift())
-        ranges = pd.concat([high_low, high_close, low_close], axis=1)
-        true_range = np.max(ranges, axis=1)
-        df["atr"] = true_range.rolling(days).sum()/14
+        # days = 14 #The time period employed
+        # high_low = df['high'] - df['low']
+        # high_close = np.abs(df['high'] - df['close'].shift())
+        # low_close = np.abs(df['low'] - df['close'].shift())
+        # ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        # true_range = np.max(ranges, axis=1)
+        # df["atr"] = true_range.rolling(days).sum()/14
 
         df.to_csv("data/" + stock + "_Processed.csv", index=False) # Save to CSV
         list_of_stocks_processed.append(stock + "_Processed")
@@ -157,8 +159,11 @@ def preprocess_data(list_of_stocks):
 
 
 if __name__ == "__main__":
-    # list_of_stocks = ["TSLA_2020-03-01_2022-01-20_1min" ] 
-    list_of_stocks = ["AAPL_2020-03-24_2022-02-12_15min", "TSLA_2020-03-09_2022-01-28_15min", "TSLA_2020-03-01_2022-01-20_1min"] # List of stock data csv's to be tested, located in "data/" folder  # "AAPL_2020-03-24_2022-02-12_15min"
+    # stock_symbols = ["JNJ","XOM"]
+    stock_symbols = ["JNJ","XOM","AMZN","MSFT","IBM","GOOG","AAPL","NVDA","META","UNH"]
+    list_of_stocks = [] # List of stock data csv's to be tested, located in "data/" folder  # "AAPL_2020-03-24_2022-02-12_15min"
+    for stock_symbol in stock_symbols:
+        list_of_stocks.append(stock_symbol + "_2020-09-19_2022-08-10_15min")
     list_of_stocks_proccessed = preprocess_data(list_of_stocks) # Preprocess the data
     results = tester.test_array(list_of_stocks_proccessed, logic, chart=True) # Run backtest on list of stocks using the logic function
 
