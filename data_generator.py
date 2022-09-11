@@ -27,7 +27,7 @@ get_intraday_extended() function:
     Input:  symbol: the stock symbol to be returned
             start_date: the starting date for the range of dates to be returned (Can set start date to "all" to return all available data)
             end_date: the ending date for the range of dates to be returned
-            interval: the interval of the data to be returned (1min, 5min, 15min, 30min, 60min)
+            interval: the interval of the data to be returned (1min, 5min, 60min, 30min, 60min)
             combine: whether to combine the data into one dataframe or not, if not, saves each timeslice as it's own csv, (combine=True is recommended)
 
     Output: data: the dataframe containing the intraday_extended data
@@ -37,14 +37,14 @@ get_intraday_extended() function:
 """
 
 
-# api.get_intraday_extended('AAPL', 'all', '', '15min', True)
-# api.get_intraday_extended('GOOG', 'all', '', '15min', True)
-# api.get_intraday_extended('IBM', 'all', '', '15min', True)
-# api.get_intraday_extended('MSFT', 'all', '', '15min', True)
-# api.get_intraday_extended('AMZN', 'all', '', '15min', True)
-# api.get_intraday_extended('TSLA', 'all', '', '15min', True)
+# api.get_intraday_extended('AAPL', 'all', '', '60min', True)
+# api.get_intraday_extended('GOOG', 'all', '', '60min', True)
+# api.get_intraday_extended('IBM', 'all', '', '60min', True)
+# api.get_intraday_extended('MSFT', 'all', '', '60min', True)
+api.get_intraday_extended('AMZN', 'all', '', '60min', True)
+api.get_intraday_extended('TSLA', 'all', '', '60min', True)
 other_stocks = ["JNJ","XOM"] #"NVDA","BRK.B","META","UNH",
 for stocks in other_stocks:
-        api.get_intraday_extended(stocks, 'all', '', '15min', True)
+        api.get_intraday_extended(stocks, 'all', '', '60min', True)
 api.get_intraday_extended('TSLA', 'year1month2', 'year1month1', '60min', True, False)
-api.get_intraday_extended('TSLA', 'all', 'year1month1', '15min', True, True)
+api.get_intraday_extended('TSLA', 'all', 'year1month1', '60min', True, True)
