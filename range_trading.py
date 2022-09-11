@@ -1,8 +1,17 @@
+from cgi import test
+from itertools import count
 import pandas as pd
 import time
 import multiprocessing as mp
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
+import statsmodels.api as sm
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression, LassoCV, ElasticNetCV, Ridge
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.preprocessing import PolynomialFeatures, StandardScaler
+from joblib import dump, load
 # local imports
 from backtester import engine, tester
 from backtester import API_Interface as api
@@ -21,7 +30,38 @@ logic() function:
             df - the df dataframe, containing all data up until this point in time
 
     Output: none, but the account object will be modified on each call
+
 '''
+
+
+
+def geo_ret(ser):
+    return (1+ser).prod()-1
+
+def get_features(df):
+    df['Pre-Rt'] = df['close'].pct_change()
+
+    df['fac-1'] = df['Pre-Rt'].shift(1)
+    df['fac-2'] = df['Pre-Rt'].shift(2)
+    df['fac-3'] = (1 + df['fac-1']) * (1 + df['fac-2']) - 1
+    df['fac-4'] = df['Pre-Rt'].rolling(5).apply(geo_ret).shift(1)
+    df['fac-5'] = df['Pre-Rt'].rolling(14).apply(geo_ret).shift(1)
+    df['fac-6'] = df['Pre-Rt'].rolling(22).apply(geo_ret).shift(1)
+    df['fac-7'] = df['Pre-Rt'].rolling(120).apply(geo_ret).shift(1)
+    df['fac-8'] = df['Pre-Rt'].rolling(250).apply(geo_ret).shift(1)
+
+    df['OneYearVolume'] = df['volume'].rolling(250).sum().shift(1)
+
+    df['fac-9'] = df['volume'].shift(1)/df['OneYearVolume']
+    df['fac-10'] = df['volume'].rolling(2).sum().shift(1)/df['OneYearVolume']
+    df['fac-11'] = df['volume'].rolling(5).sum().shift(1)/df['OneYearVolume']
+    df['fac-12'] = df['volume'].rolling(14).sum().shift(1)/df['OneYearVolume']
+    df['fac-13'] = df['volume'].rolling(22).sum().shift(1)/df['OneYearVolume']
+    df['fac-14'] = df['volume'].rolling(120).sum().shift(1)/df['OneYearVolume']
+    return df
+
+def Z_score(df):
+    return (df-df.mean()).div(df.std())
 
 def risk_management(account):
     # safety_percentage = 1
@@ -50,7 +90,7 @@ def logic(account, lookback): # Logic function to be used for each time interval
 
     # Volume is simply the number of shares traded in a particular stock, index, or other investment over a specific period of time.
     
-    period = 64
+    period = 500
     # Approx a day
 
     '''
@@ -59,56 +99,63 @@ def logic(account, lookback): # Logic function to be used for each time interval
     
     '''
     #Check every day (64)
-    if today % period == 0 and today >=  training_period*2:
+    if today % period == 0 and today != 0:
+        # lookback = lookback.drop(axis=0, index=lookback.index[today-300])
+
+        # sns.pairplot(lookback.filter(like = 'fac').dropna())
+        # plt.show()
+   
+        factors= lookback.dropna().filter(like='fac').columns.tolist()
+        # print(lookback.isna().sum())
+    
+        scaler = StandardScaler()
+        pf = PolynomialFeatures(degree=3)
+        Xp = pf.fit_transform(lookback.drop('Pre-Rt',axis = 1)[factors])
+        factorsp = pf.get_feature_names(factors)
+        Xp = pd.DataFrame(Xp, columns=factorsp, index = lookback.index)
+
+
+
+        X_train, X_test, Y_train, Y_test = train_test_split(Xp,lookback['Pre-Rt'], test_size=0.2)
+        scaler.fit(X_train)
+        X_train = scaler.transform(X_train)
+        X_test = scaler.transform(X_test)
+
+        ridge_model = Ridge(alpha=10)
+        ridge_model.fit(X_train,Y_train)
+        test_predictions = ridge_model.predict(X_test)
+
+        dump(pf,'poly_converter.joblib')
+        dump(ridge_model, 'trading_poly_model.joblib') 
+
+        
+
+        # MAE = mean_absolute_error(Y_test,test_predictions)
+        # MSE = mean_squared_error(Y_test,test_predictions)
+        # RMSE = np.sqrt(MSE)
+        
+        # print("MAE: " + str(MAE))
+        # print("RMSE: " + str(RMSE))
+      
+    
+    
+    if today % (period*2) == 0 and today != 0:
+        factors= lookback.dropna().filter(like='fac').columns.tolist()
+        loaded_poly = load('poly_converter.joblib')
+        loaded_model = load('trading_poly_model.joblib')
+        lookback_poly = loaded_poly.transform(lookback[factors][today-period:today])
+        prediction = loaded_model.predict(lookback_poly) +1
+        plt.plot(lookback['close'][today-period] * np.cumprod(prediction), label="Model")
+        lookback = lookback['close'].drop(axis = 0, index = lookback.index[:today-period])
+        print(lookback)
+        plt.plot(lookback,label="Actual Data")
+     
+        plt.legend()
+        plt.show()
+        
+
 
        
-        safety_percentage = risk_management(account)
-
-        #Range market
-        if lookback['percent_b'][today-64:today].mean() < 0.3:
-        
-            if(lookback['close'][today] < lookback['BOLD'][today]): # If current price is below lower Bollinger Band, enter a long position
-                
-                for position in account.positions: # Close all current positions
-                    account.close_position(position, 1, lookback['close'][today])
-                if(account.buying_power > 0):
-                    account.enter_position('long',account.buying_power * safety_percentage, lookback['close'][today]) # Enter a long position
-
-            if(lookback['close'][today] > lookback['BOLU'][today]): # If today's price is above the upper Bollinger Band, enter a short position
-                for position in account.positions: # Close all current positions
-                    account.close_position(position, 1, lookback['close'][today])
-                if(account.buying_power > 0):
-                    account.enter_position('short', account.buying_power * safety_percentage, lookback['close'][today]) # Enter a short position
-
-
-        #Trending market
-        else:
-
-            if lookback['Trend'][today-20:today].sum() > 0 and lookback['MA-TP'][today-20:today].mean() <  lookback['close'][today-20:today].mean() and lookback['close'][today] >= lookback['BOLU'][today]:
-                for position in account.positions: # Close all current positions
-                    account.close_position(position, 1, lookback['close'][today])
-                if(account.buying_power > 0):
-                    account.enter_position('long',account.buying_power * safety_percentage, lookback['close'][today]) # Enter a long position
-
-            if lookback['Trend'][today-20:today].sum() < 0 and lookback['MA-TP'][today-20:today].mean() >  lookback['close'][today-20:today].mean() and lookback['close'][today] <= lookback['BOLD'][today]:
-                for position in account.positions: # Close all current positions
-                    account.close_position(position, 1, lookback['close'][today])
-                if(account.buying_power > 0):
-                    account.enter_position('short', account.buying_power * safety_percentage, lookback['close'][today]) # Enter a short position
-
-
-
-
-
-
-        # Plot the Bollinger Bands
-   
-        # ax = plt.subplots()
-        # ax = lookback[['close', 'MA-TP', 'BOLU', 'BOLD']].plot(color=['blue','green' ,'orange', 'yellow'])
-        # ax.fill_between(lookback.index, lookback['BOLD'], lookback['BOLU'], facecolor='orange', alpha=0.1)
-    
-
-        # plt.show()
 
 '''
 preprocess_data() function:
@@ -149,6 +196,8 @@ def preprocess_data(list_of_stocks):
         # true_range = np.max(ranges, axis=1)
         # df["atr"] = true_range.rolling(days).sum()/14
 
+     
+        df = get_features(df).drop(axis=0, index=df.index[:251])
         df.to_csv("data/" + stock + "_Processed.csv", index=False) # Save to CSV
         list_of_stocks_processed.append(stock + "_Processed")
     return list_of_stocks_processed
@@ -159,8 +208,8 @@ def preprocess_data(list_of_stocks):
 
 
 if __name__ == "__main__":
-    # stock_symbols = ["JNJ","XOM"]
-    stock_symbols = ["JNJ","XOM","AMZN","MSFT","IBM","GOOG","AAPL","NVDA","META","UNH"]
+    stock_symbols = ["AAPL"]
+    # stock_symbols = ["JNJ","XOM","AMZN","MSFT","IBM","GOOG","AAPL","NVDA","META","UNH"]
     list_of_stocks = [] # List of stock data csv's to be tested, located in "data/" folder  # "AAPL_2020-03-24_2022-02-12_15min"
     for stock_symbol in stock_symbols:
         list_of_stocks.append(stock_symbol + "_2020-09-19_2022-08-10_15min")
