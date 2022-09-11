@@ -146,9 +146,9 @@ def logic(account, lookback): # Logic function to be used for each time interval
         lookback_poly = loaded_poly.transform(lookback[factors][today-period:today])
         prediction = loaded_model.predict(lookback_poly) +1
         plt.plot(lookback['close'][today-period] * np.cumprod(prediction), label="Model")
-        lookback = lookback['close'].drop(axis = 0, index = lookback.index[:today-period])
-        print(lookback)
-        plt.plot(lookback,label="Actual Data")
+        data = lookback['close'].drop(axis = 0, index = lookback.index[:today-period]).reset_index().drop('index', axis = 1)
+
+        plt.plot(data,label="Actual Data")
      
         plt.legend()
         plt.show()
