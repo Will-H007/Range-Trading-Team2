@@ -37,14 +37,14 @@ get_intraday_extended() function:
 """
 
 
-# api.get_intraday_extended('AAPL', 'all', '', '60min', True)
-# api.get_intraday_extended('GOOG', 'all', '', '60min', True)
-# api.get_intraday_extended('IBM', 'all', '', '60min', True)
-# api.get_intraday_extended('MSFT', 'all', '', '60min', True)
-api.get_intraday_extended('AMZN', 'all', '', '60min', True)
-api.get_intraday_extended('TSLA', 'all', '', '60min', True)
+# api.get_intraday_extended('AAPL', 'all', '', '1min', True)
+# api.get_intraday_extended('GOOG', 'all', '', '1min', True)
+# api.get_intraday_extended('IBM', 'all', '', '1min', True)
+# api.get_intraday_extended('MSFT', 'all', '', '1min', True)
+# api.get_intraday_extended('AMZN', 'all', '', '1min', True)
+# api.get_intraday_extended('TSLA', 'all', '', '1min', True)
 other_stocks = ["JNJ","XOM"] #"NVDA","BRK.B","META","UNH",
 for stocks in other_stocks:
-        api.get_intraday_extended(stocks, 'all', '', '60min', True)
+        api.get_intraday_extended(stocks, 'all', '', '1min', True)
 api.get_intraday_extended('TSLA', 'year1month2', 'year1month1', '60min', True, False)
 api.get_intraday_extended('TSLA', 'all', 'year1month1', '60min', True, True)

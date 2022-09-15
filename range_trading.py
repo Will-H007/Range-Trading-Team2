@@ -90,7 +90,7 @@ def logic(account, lookback): # Logic function to be used for each time interval
 
     # Volume is simply the number of shares traded in a particular stock, index, or other investment over a specific period of time.
     
-    period = 300
+    period = 200
     # Approx a day
 
     '''
@@ -121,51 +121,59 @@ def logic(account, lookback): # Logic function to be used for each time interval
         X_train = scaler.transform(X_train)
         X_test = scaler.transform(X_test)
 
-        ridge_model = Ridge(alpha=10)
-        ridge_model.fit(X_train,Y_train)
-        test_predictions = ridge_model.predict(X_test)
+        lasso_model = LassoCV(alpha=10)
+        lasso_model.fit(X_train,Y_train)
+        test_predictions = lasso_model.predict(X_test)
 
         dump(pf,'poly_converter.joblib')
-        dump(ridge_model, 'trading_poly_model.joblib') 
+        dump(lasso_model, 'trading_poly_model.joblib') 
 
-        
+        plt.plot(test_predictions, label="Model")
+        data = lookback['Pre-Rt']
 
-        # MAE = mean_absolute_error(Y_test,test_predictions)
-        # MSE = mean_squared_error(Y_test,test_predictions)
-        # RMSE = np.sqrt(MSE)
+        plt.plot(data,label="Actual Data")
+    
+        plt.legend()
+        plt.show()
+
+        MAE = mean_absolute_error(Y_test,test_predictions)
+        MSE = mean_squared_error(Y_test,test_predictions)
+        RMSE = np.sqrt(MSE)
         
-        # print("MAE: " + str(MAE))
-        # print("RMSE: " + str(RMSE))
+        print("MAE: " + str(MAE))
+        print("RMSE: " + str(RMSE))
       
     
     
-    if today % period == 0 and today != 0:
+    if today > period and today % 100 == 0:
         factors= lookback.dropna().filter(like='fac').columns.tolist()
         loaded_poly = load('poly_converter.joblib')
         loaded_model = load('trading_poly_model.joblib')
         lookback_poly = loaded_poly.transform(lookback[factors][today-period:today])
-        prediction = loaded_model.predict(lookback_poly) +1
-        prediction = lookback['close'][today-period] * np.cumprod(prediction)
-        # plt.plot(prediction, label="Model")
-        # data = lookback['close'].drop(axis = 0, index = lookback.index[:today-period]).reset_index().drop('index', axis = 1)
+        prediction = loaded_model.predict(lookback_poly)
+        # prediction = lookback['close'][today-period] * np.cumprod(prediction + 1)
+    
+        plt.plot(prediction, label="Model")
+        data = lookback['Pre-Rt'].drop(axis = 0, index = lookback.index[:today-period]).reset_index().drop('index', axis = 1)
 
-        # plt.plot(data,label="Actual Data")
-     
-        # plt.legend()
-        # plt.show()
-        protection = risk_management(account)
-        slope = (prediction[-1] - prediction[0]) / period
-        if(slope > 0): # If current price is below lower Bollinger Band, enter a long position
-            for position in account.positions: # Close all current positions
-                account.close_position(position, 1, lookback['close'][today])
-            if(account.buying_power > 0):
-                account.enter_position('long', account.buying_power * protection, lookback['close'][today]) # Enter a long position
+        plt.plot(data,label="Actual Data")
+    
+        plt.legend()
+        plt.show()
+        # protection = risk_management(account)
+        # slope = (prediction[-1] - prediction[0]) / period
+        # print(slope)
+        # if(slope > 0): # If current price is below lower Bollinger Band, enter a long position
+        #     for position in account.positions: # Close all current positions
+        #         account.close_position(position, 1, lookback['close'][today])
+        #     if(account.buying_power > 0):
+        #         account.enter_position('long', account.buying_power * protection, lookback['close'][today]) # Enter a long position
 
-        if(slope < 0): # If current price is below lower Bollinger Band, enter a short position
-            for position in account.positions: # Close all current positions
-                account.close_position(position, 1, lookback['close'][today])
-            if(account.buying_power > 0):
-                account.enter_position('short', account.buying_power * protection , lookback['close'][today]) # Enter a short position
+        # if(slope < 0): # If current price is below lower Bollinger Band, enter a short position
+        #     for position in account.positions: # Close all current positions
+        #         account.close_position(position, 1, lookback['close'][today])
+        #     if(account.buying_power > 0):
+        #         account.enter_position('short', account.buying_power * protection , lookback['close'][today]) # Enter a short position
 
        
 
@@ -220,8 +228,8 @@ def preprocess_data(list_of_stocks):
 
 
 if __name__ == "__main__":
-    stock_symbols = ["MSFT","IBM"]
-    # stock_symbols = ["JNJ","XOM","AMZN","MSFT","IBM","GOOG","AAPL","NVDA","META","UNH"]
+    stock_symbols = ["GOOG"]
+    # stock_symbols = ["JNJ","XOM","AMZN","MSFT","IBM","GOOG","AAPL","NVDA","META","UNH", "TSLA"]
     list_of_stocks = [] # List of stock data csv's to be tested, located in "data/" folder  # "AAPL_2020-03-24_2022-02-12_15min"
     for stock_symbol in stock_symbols:
         # list_of_stocks.append(stock_symbol + "_2020-09-19_2022-08-10_15min")
