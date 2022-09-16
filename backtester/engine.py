@@ -4,29 +4,36 @@ import numpy as np
 import warnings
 import time
 import statistics
+from Sequences import Sequences
 
-# Local imorts
+# Local imports
 from backtester import account, help_funcs
+
 
 class backtest():
     """An object representing a backtesting simulation."""
     def __init__(self, data):
-        """Initate the backtest.
+        """
+        Backtest object.
 
         :param data: An HLOCV+ pandas dataframe with a datetime index
         :type data: pandas.DataFrame
 
-        :return: A bactesting simulation
+        :return: A backtesting simulation
         :rtype: backtest
         """  
         if not isinstance(data, pd.DataFrame):
             raise ValueError("Data must be a pandas dataframe")
-        missing = set(['high', 'low', 'open', 'close', 'volume'])-set(data.columns)
+        missing = {'high', 'low', 'open', 'close', 'volume'} - set(data.columns)
         if len(missing) > 0:
             msg = "Missing {0} column(s), dataframe must be HLOCV+".format(list(missing))
             warnings.warn(msg)
 
         self.data = data
+
+        # create sequence class
+        array = data['x1'].values
+        self.sequence_holder = Sequences(array, 20+1)  # sequences of length 21
 
     def start(self, initial_capital, logic):
         """Start backtest.
@@ -47,7 +54,6 @@ class backtest():
         
         # for (index,date,low,high,open,close,volume) in self.data.itertuples(): # Itertuples is faster than iterrows
         for index, today in self.data.iterrows():
-            
             # equity = self.account.total_value(close)
             date = today["date"]
             equity = self.account.total_value(today['close'])
@@ -59,7 +65,7 @@ class backtest():
             # Execute trading logic
             lookback = self.data[0:index+1]
 
-            logic(self.account, lookback)
+            logic(self.account, lookback, self.sequence_holder)
 
             # Cleanup empty positions
             self.account.purge_positions()
@@ -135,11 +141,9 @@ class backtest():
                 except:
                     pass
         bokeh.plotting.show(p)
-    
+
     def plotlyplotting(self, show_trades=False, title="Equity Curve"):
-
         import plotly.express as px
-
         df = px.data.gapminder().query("country=='Canada'")
         fig = px.line(df, x="year", y="lifeExp", title='Life expectancy in Canada')
         fig.show()
