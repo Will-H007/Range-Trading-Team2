@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import statsmodels.api as sm
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression, LassoCV, ElasticNetCV, Ridge
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.linear_model import LinearRegression, LassoCV, ElasticNet, Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.preprocessing import PolynomialFeatures, StandardScaler
 from joblib import dump, load
@@ -16,10 +16,20 @@ from joblib import dump, load
 from backtester import engine, tester
 from backtester import API_Interface as api
 
-training_period = 20 # How far the rolling average takes into calculation
-standard_deviations = 3.5 # Number of Standard Deviations from the mean the Bollinger Bands sit
+training_period = 200 # How far the rolling average takes into calculation
+standard_deviations = 3 # Number of Standard Deviations from the mean the Bollinger Bands sit
+
+def counts(df):
+  # Consecutive days that got above the upper bollinger band
+  if df['b1'] > 1 and df['b2'] > 1 and df['b3'] < 1: return 2
+  elif df['b1'] > 1 and df['b2'] > 1 and df['b3'] > 1: return 3
+
+    # Consecutive days that got below the lower bollinger band  
+  elif df['b1'] < 0 and df['b2'] < 0 and df['b3'] > 0: return -2
+  elif df['b1'] < 0 and df['b2'] < 0 and df['b3'] < 0: return -3
 
 
+  else: return 0
 
 
 '''
@@ -32,48 +42,30 @@ logic() function:
     Output: none, but the account object will be modified on each call
 
 '''
+def get_adx(high, low, close, lookback):
+    plus_dm = high.diff()
+    minus_dm = low.diff()
+    plus_dm[plus_dm < 0] = 0
+    minus_dm[minus_dm > 0] = 0
+    
+    tr1 = pd.DataFrame(high - low)
+    tr2 = pd.DataFrame(abs(high - close.shift(1)))
+    tr3 = pd.DataFrame(abs(low - close.shift(1)))
+    frames = [tr1, tr2, tr3]
+    tr = pd.concat(frames, axis = 1, join = 'inner').max(axis = 1)
+    atr = tr.rolling(lookback).mean()
+    
+    plus_di = 100 * (plus_dm.ewm(alpha = 1/lookback).mean() / atr)
+    minus_di = abs(100 * (minus_dm.ewm(alpha = 1/lookback).mean() / atr))
+    dx = (abs(plus_di - minus_di) / abs(plus_di + minus_di)) * 100
+    adx = ((dx.shift(1) * (lookback - 1)) + dx) / lookback
+    adx_smooth = adx.ewm(alpha = 1/lookback).mean()
+    return plus_di, minus_di, adx_smooth
 
 
 
-def geo_ret(ser):
-    return (1+ser).prod()-1
 
-def get_features(df):
-    df['Pre-Rt'] = df['close'].pct_change()
 
-    df['fac-1'] = df['Pre-Rt'].shift(1)
-    df['fac-2'] = df['Pre-Rt'].shift(2)
-    df['fac-3'] = (1 + df['fac-1']) * (1 + df['fac-2']) - 1
-    df['fac-4'] = df['Pre-Rt'].rolling(5).apply(geo_ret).shift(1)
-    df['fac-5'] = df['Pre-Rt'].rolling(14).apply(geo_ret).shift(1)
-    df['fac-6'] = df['Pre-Rt'].rolling(22).apply(geo_ret).shift(1)
-    df['fac-7'] = df['Pre-Rt'].rolling(120).apply(geo_ret).shift(1)
-    df['fac-8'] = df['Pre-Rt'].rolling(250).apply(geo_ret).shift(1)
-
-    df['OneYearVolume'] = df['volume'].rolling(250).sum().shift(1)
-
-    df['fac-9'] = df['volume'].shift(1)/df['OneYearVolume']
-    df['fac-10'] = df['volume'].rolling(2).sum().shift(1)/df['OneYearVolume']
-    df['fac-11'] = df['volume'].rolling(5).sum().shift(1)/df['OneYearVolume']
-    df['fac-12'] = df['volume'].rolling(14).sum().shift(1)/df['OneYearVolume']
-    df['fac-13'] = df['volume'].rolling(22).sum().shift(1)/df['OneYearVolume']
-    df['fac-14'] = df['volume'].rolling(120).sum().shift(1)/df['OneYearVolume']
-    return df
-
-def Z_score(df):
-    return (df-df.mean()).div(df.std())
-
-def risk_management(account):
-    # safety_percentage = 1
-    if account.buying_power > 6500:
-        safety_percentage = 0.5
-    elif account.buying_power > 5000 and account.buying_power <= 6500:
-        safety_percentage = 0.4
-    elif 3500 < account.buying_power and account.buying_power <= 5000:
-        safety_percentage = 0.3
-    else:
-        safety_percentage = 0
-    return safety_percentage
 
 
 def logic(account, lookback): # Logic function to be used for each time interval in backtest 
@@ -89,8 +81,7 @@ def logic(account, lookback): # Logic function to be used for each time interval
     # A stock’s high and low points for the day are often called its intraday high and low.
 
     # Volume is simply the number of shares traded in a particular stock, index, or other investment over a specific period of time.
-    
-    period = 200
+
     # Approx a day
 
     '''
@@ -98,84 +89,18 @@ def logic(account, lookback): # Logic function to be used for each time interval
     Develop Logic Here
     
     '''
-    #Check every day (64)
-    if today % period == 0 and today != 0:
-        # lookback = lookback.drop(axis=0, index=lookback.index[today-300])
+    
+    if(today > training_period ): # If the lookback is long enough to calculate the Bollinger Bands
+    
+        if lookback['adx'][today] < 20:
+            if lookback['counts'][today] == -2 or lookback['counts'][today] == -3 and lookback['close'][today] > lookback['MA-TP'][today]:
+                if(account.buying_power > 0):
+                    account.enter_position('long', account.buying_power, lookback['close'][today]) # Enter a long position
 
-        # sns.pairplot(lookback.filter(like = 'fac').dropna())
-        # plt.show()
+            if lookback['b-percent'][today] > 0.8:
+                for position in account.positions: # Close all current positions
+                    account.close_position(position, 1, lookback['close'][today])
    
-        factors= lookback.dropna().filter(like='fac').columns.tolist()
-        # print(lookback.isna().sum())
-    
-        scaler = StandardScaler()
-        pf = PolynomialFeatures(degree=3)
-        Xp = pf.fit_transform(lookback.drop('Pre-Rt',axis = 1)[factors])
-        factorsp = pf.get_feature_names(factors)
-        Xp = pd.DataFrame(Xp, columns=factorsp, index = lookback.index)
-
-
-
-        X_train, X_test, Y_train, Y_test = train_test_split(Xp,lookback['Pre-Rt'], test_size=0.2)
-        scaler.fit(X_train)
-        X_train = scaler.transform(X_train)
-        X_test = scaler.transform(X_test)
-
-        lasso_model = LassoCV(alpha=10)
-        lasso_model.fit(X_train,Y_train)
-        test_predictions = lasso_model.predict(X_test)
-
-        dump(pf,'poly_converter.joblib')
-        dump(lasso_model, 'trading_poly_model.joblib') 
-
-        plt.plot(test_predictions, label="Model")
-        data = lookback['Pre-Rt']
-
-        plt.plot(data,label="Actual Data")
-    
-        plt.legend()
-        plt.show()
-
-        MAE = mean_absolute_error(Y_test,test_predictions)
-        MSE = mean_squared_error(Y_test,test_predictions)
-        RMSE = np.sqrt(MSE)
-        
-        print("MAE: " + str(MAE))
-        print("RMSE: " + str(RMSE))
-      
-    
-    
-    if today > period and today % 100 == 0:
-        factors= lookback.dropna().filter(like='fac').columns.tolist()
-        loaded_poly = load('poly_converter.joblib')
-        loaded_model = load('trading_poly_model.joblib')
-        lookback_poly = loaded_poly.transform(lookback[factors][today-period:today])
-        prediction = loaded_model.predict(lookback_poly)
-        # prediction = lookback['close'][today-period] * np.cumprod(prediction + 1)
-    
-        plt.plot(prediction, label="Model")
-        data = lookback['Pre-Rt'].drop(axis = 0, index = lookback.index[:today-period]).reset_index().drop('index', axis = 1)
-
-        plt.plot(data,label="Actual Data")
-    
-        plt.legend()
-        plt.show()
-        # protection = risk_management(account)
-        # slope = (prediction[-1] - prediction[0]) / period
-        # print(slope)
-        # if(slope > 0): # If current price is below lower Bollinger Band, enter a long position
-        #     for position in account.positions: # Close all current positions
-        #         account.close_position(position, 1, lookback['close'][today])
-        #     if(account.buying_power > 0):
-        #         account.enter_position('long', account.buying_power * protection, lookback['close'][today]) # Enter a long position
-
-        # if(slope < 0): # If current price is below lower Bollinger Band, enter a short position
-        #     for position in account.positions: # Close all current positions
-        #         account.close_position(position, 1, lookback['close'][today])
-        #     if(account.buying_power > 0):
-        #         account.enter_position('short', account.buying_power * protection , lookback['close'][today]) # Enter a short position
-
-       
 
 '''
 preprocess_data() function:
@@ -203,21 +128,28 @@ def preprocess_data(list_of_stocks):
         df['MA-TP'] = df['TP'].rolling(training_period).mean()
         df['BOLU'] = df['MA-TP'] + 2*df['std']
         df['BOLD'] = df['MA-TP'] - 2*df['std']
-        df['Trend'] = df['MA-TP'].pct_change()
-        df["percent_b"] = (df['close'] - df['BOLU']) / (df['BOLD'] - df['BOLU'])
-        # print(df.describe().transpose())
+        df['trend'] = df['MA-TP'].pct_change()
+        df["b-percent"] = (df['close'] - df['BOLU']) / (df['BOLD'] - df['BOLU'])
+        df['b1'] = df["b-percent"].shift(1)
+        df['b2'] = df["b-percent"].shift(2)
+        df['b3'] = df["b-percent"].shift(3)
+        df['counts'] = df.apply(counts, axis = 1)
 
-        #Average True Range
-        # days = 14 #The time period employed
-        # high_low = df['high'] - df['low']
-        # high_close = np.abs(df['high'] - df['close'].shift())
-        # low_close = np.abs(df['low'] - df['close'].shift())
-        # ranges = pd.concat([high_low, high_close, low_close], axis=1)
-        # true_range = np.max(ranges, axis=1)
-        # df["atr"] = true_range.rolling(days).sum()/14
-
+        # Average True Range
+        high_low = df['high'] - df['low']
+        high_close = np.abs(df['high'] - df['close'].shift())
+        low_close = np.abs(df['low'] - df['close'].shift())
+        ranges = pd.concat([high_low, high_close, low_close], axis = 1)
+        true_range = np.max(ranges, axis = 1)
+        df['ATR1'] = true_range.rolling(100).sum()/100
      
-        df = get_features(df).drop(axis=0, index=df.index[:251])
+        # ADX
+        df['plus_di'] = pd.DataFrame(get_adx(df['high'], df['low'], df['close'], 14)[0]).rename(columns = {0:'plus_di'})
+        df['minus_di'] = pd.DataFrame(get_adx(df['high'], df['low'], df['close'], 14)[1]).rename(columns = {0:'minus_di'})
+        df['adx'] = pd.DataFrame(get_adx(df['high'], df['low'], df['close'], 14)[2]).rename(columns = {0:'adx'})
+        df = df.dropna()
+     
+
         df.to_csv("data/" + stock + "_Processed.csv", index=False) # Save to CSV
         list_of_stocks_processed.append(stock + "_Processed")
     return list_of_stocks_processed
@@ -228,12 +160,13 @@ def preprocess_data(list_of_stocks):
 
 
 if __name__ == "__main__":
-    stock_symbols = ["GOOG"]
-    # stock_symbols = ["JNJ","XOM","AMZN","MSFT","IBM","GOOG","AAPL","NVDA","META","UNH", "TSLA"]
-    list_of_stocks = [] # List of stock data csv's to be tested, located in "data/" folder  # "AAPL_2020-03-24_2022-02-12_15min"
+    stock_symbols = ["JNJ","XOM","AMZN","MSFT","IBM","GOOG","NVDA","META","UNH", "TSLA","PG","JPM","HD","CVX", "ABBV"] 
+    # stock_symbols = ["JNJ","XOM","AMZN","MSFT","IBM","GOOG",,"NVDA","META","UNH", "TSLA","PG","JPM","HD","CVX", "ABBV"]
+    list_of_stocks = [] # List of stock data csv's to be tested, located in "data/" folder  # "df_2020-03-24_2022-02-12_15min"
     for stock_symbol in stock_symbols:
-        # list_of_stocks.append(stock_symbol + "_2020-09-19_2022-08-10_15min")
-        list_of_stocks.append(stock_symbol + "_2020-09-21_2022-08-12_60min")
+        # list_of_stocks.append(stock_symbol + "_2020-10-11_2022-09-01_60min")
+        # list_of_stocks.append(stock_symbol + "_2020-09-25_2022-08-16_1min")
+        list_of_stocks.append(stock_symbol + "_2020-10-09_2022-08-30_15min")
     list_of_stocks_proccessed = preprocess_data(list_of_stocks) # Preprocess the data
     results = tester.test_array(list_of_stocks_proccessed, logic, chart=True) # Run backtest on list of stocks using the logic function
 
